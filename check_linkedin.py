@@ -1,39 +1,28 @@
 import requests
 import xml.etree.ElementTree as ET
 
-FEED_URL = "https://www.linkedin.com/company/tspborgtr/posts-atom/"
+FEED_URL = "https://rsshub.app/linkedin/company/tspborgtr"
 WEBHOOK = "你的飞书webhook"
 
 
 def get_latest_post():
 
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    r = requests.get(FEED_URL, timeout=30)
 
-    r = requests.get(FEED_URL, headers=headers, timeout=30)
+    xml = r.text
 
-    text = r.text
+    root = ET.fromstring(xml)
 
-    print("Feed preview:", text[:200])
+    channel = root.find("channel")
+    item = channel.find("item")
 
-    if "<entry>" not in text:
-        print("No post detected")
-        return None
-
-    root = ET.fromstring(text)
-
-    ns = {"a": "http://www.w3.org/2005/Atom"}
-
-    entry = root.find("a:entry", ns)
-
-    title = entry.find("a:title", ns).text
-    link = entry.find("a:link", ns).attrib["href"]
+    title = item.find("title").text
+    link = item.find("link").text
 
     return title, link
 
 
-def push_to_lark(title, link):
+def push(title, link):
 
     data = {
         "title": title,
@@ -46,17 +35,12 @@ def push_to_lark(title, link):
 
 def main():
 
-    result = get_latest_post()
+    title, link = get_latest_post()
 
-    if not result:
-        return
-
-    title, link = result
-
-    print("Latest post:", title)
+    print(title)
     print(link)
 
-    push_to_lark(title, link)
+    push(title, link)
 
 
 if __name__ == "__main__":
