@@ -1,55 +1,41 @@
-import re
+from playwright.sync_api import sync_playwright
 import requests
-from html import unescape
+import re
 
-FEED_URL = "https://www.linkedin.com/company/tspborgtr/posts-atom/"
+PAGE_URL = "https://www.linkedin.com/company/tspborgtr/posts/"
 WEBHOOK = "https://metx-digital.sg.larksuite.com/base/automation/webhook/event/WTqiakYyZwTVGVhKDVTlny8VgNe"
 
 
-def fetch_feed():
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept-Language": "en-US,en;q=0.9"
-    }
-    resp = requests.get(FEED_URL, headers=headers, timeout=30)
-    resp.raise_for_status()
-    return resp.text
+def get_latest_post():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+
+        page.goto(PAGE_URL, wait_until="networkidle", timeout=60000)
+
+        html = page.content()
+        print("Page loaded, html length:", len(html))
+
+        # 直接从渲染后的 HTML 里抓最新 activity id
+        matches = re.findall(r"urn:li:activity:(\d+)", html)
+
+        if not matches:
+            browser.close()
+            print("No activity id found")
+            return None
+
+        post_id = matches[0]
+        browser.close()
+
+        return post_id
 
 
-def clean_text(text: str) -> str:
-    text = unescape(text)
-    text = re.sub(r"<.*?>", "", text, flags=re.S)
-    return text.strip()
+def push_to_lark(post_id: str):
+    post_url = f"https://www.linkedin.com/feed/update/urn:li:activity:{post_id}/"
 
-
-def parse_latest_post(feed_text: str):
-    # 先找第一条 entry
-    entry_match = re.search(r"<entry\b.*?</entry>", feed_text, re.S | re.I)
-    if not entry_match:
-        print("No entry found in feed")
-        return None
-
-    entry = entry_match.group(0)
-
-    # 抓标题
-    title_match = re.search(r"<title\b[^>]*>(.*?)</title>", entry, re.S | re.I)
-    title = clean_text(title_match.group(1)) if title_match else "Latest LinkedIn Post"
-
-    # 抓链接
-    link_match = re.search(r'<link\b[^>]*href="([^"]+)"', entry, re.S | re.I)
-    if not link_match:
-        print("No link found in feed entry")
-        return None
-
-    link = unescape(link_match.group(1)).strip()
-
-    return title, link
-
-
-def push_to_lark(title: str, link: str):
     payload = {
-        "title": title,
-        "url": link,
+        "title": "Latest LinkedIn Post",
+        "url": post_url,
         "author": "TSPB"
     }
 
@@ -60,26 +46,19 @@ def push_to_lark(title: str, link: str):
         timeout=20
     )
     resp.raise_for_status()
-    print("Push success:", link)
+
+    print("Push success:", post_url)
 
 
 def main():
-    feed_text = fetch_feed()
+    post_id = get_latest_post()
 
-    # 调试时可看前300个字符
-    print("Feed preview:", feed_text[:300].replace("\n", " "))
-
-    result = parse_latest_post(feed_text)
-
-    if not result:
+    if not post_id:
         print("No post found")
         return
 
-    title, link = result
-    print("Latest post title:", title)
-    print("Latest post link:", link)
-
-    push_to_lark(title, link)
+    print("Latest post id:", post_id)
+    push_to_lark(post_id)
 
 
 if __name__ == "__main__":
