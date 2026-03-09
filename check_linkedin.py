@@ -1,46 +1,36 @@
-import requests
-import xml.etree.ElementTree as ET
+iimport requests
 
 FEED_URL = "https://rsshub.app/linkedin/company/tspborgtr"
-WEBHOOK = "你的飞书webhook"
+WEBHOOK = "https://metx-digital.sg.larksuite.com/base/automation/webhook/event/WTqiakYyZwTVGVhKDVTlny8VgNe"
 
 
-def get_latest_post():
-
-    r = requests.get(FEED_URL, timeout=30)
-
-    xml = r.text
-
-    root = ET.fromstring(xml)
-
-    channel = root.find("channel")
-    item = channel.find("item")
-
-    title = item.find("title").text
-    link = item.find("link").text
-
-    return title, link
-
-
-def push(title, link):
-
-    data = {
-        "title": title,
-        "url": link,
-        "author": "TSPB"
+def get_feed():
+    headers = {
+        "User-Agent": "Mozilla/5.0"
     }
 
-    requests.post(WEBHOOK, json=data)
+    r = requests.get(FEED_URL, headers=headers, timeout=30)
+
+    print("Status code:", r.status_code)
+    print("Content-Type:", r.headers.get("Content-Type"))
+    print("Preview:")
+    print(r.text[:500])
+
+    return r
 
 
 def main():
+    r = get_feed()
 
-    title, link = get_latest_post()
+    if r.status_code != 200:
+        print("Request failed")
+        return
 
-    print(title)
-    print(link)
+    if "<rss" not in r.text and "<?xml" not in r.text:
+        print("Not XML / RSS")
+        return
 
-    push(title, link)
+    print("Looks like valid RSS/XML")
 
 
 if __name__ == "__main__":
