@@ -1,31 +1,56 @@
 import re
 import requests
+import json
 
 LINKEDIN_PAGE = "https://www.linkedin.com/company/tspborgtr/posts/"
 WEBHOOK = "https://metx-digital.sg.larksuite.com/base/automation/webhook/event/WTqiakYyZwTVGVhKDVTlny8VgNe"
 
 
-def fetch_html(url: str) -> str:
+def fetch_html(url):
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Accept-Language": "en-US,en;q=0.9"
     }
+
     resp = requests.get(url, headers=headers, timeout=30)
     resp.raise_for_status()
     return resp.text
 
 
-def extract_latest_post_id(html: str):
-    match = re.search(r'activity:(\d+)', html)
-    if match:
-        return match.group(1)
-    return None
+def extract_post(html):
+
+    # 找 JSON 数据块
+    match = re.search(r'<code id="bpr-guid-[^"]+">(.*?)</code>', html)
+
+    if not match:
+        print("No JSON block found")
+        return None
+
+    data = match.group(1)
+    data = data.replace("&quot;", '"')
+
+    try:
+        obj = json.loads(data)
+    except:
+        print("JSON parse error")
+        return None
+
+    text = json.dumps(obj)
+
+    match2 = re.search(r'"activityUrn":"urn:li:activity:(\d+)"', text)
+
+    if not match2:
+        print("No activity id found")
+        return None
+
+    return match2.group(1)
 
 
-def push_to_lark(post_id: str):
+def push_to_lark(post_id):
+
     post_url = f"https://www.linkedin.com/feed/update/urn:li:activity:{post_id}/"
 
-    data = {
+    payload = {
         "title": "Latest LinkedIn Post",
         "url": post_url,
         "author": "TSPB"
@@ -34,23 +59,28 @@ def push_to_lark(post_id: str):
     resp = requests.post(
         WEBHOOK,
         headers={"Content-Type": "application/json"},
-        json=data,
+        json=payload,
         timeout=20
     )
+
     resp.raise_for_status()
+
     print("Push success:", post_url)
 
 
 def main():
-    html = fetch_html(LINKEDIN_PAGE)
-    latest_post_id = extract_latest_post_id(html)
 
-    if not latest_post_id:
-        print("No post id found.")
+    html = fetch_html(LINKEDIN_PAGE)
+
+    post_id = extract_post(html)
+
+    if not post_id:
+        print("No post detected")
         return
 
-    print("Latest post id:", latest_post_id)
-    push_to_lark(latest_post_id)
+    print("Latest post id:", post_id)
+
+    push_to_lark(post_id)
 
 
 if __name__ == "__main__":
