@@ -1,4 +1,4 @@
-iimport requests
+import requests
 
 FEED_URL = "https://rsshub.app/linkedin/company/tspborgtr"
 WEBHOOK = "https://metx-digital.sg.larksuite.com/base/automation/webhook/event/WTqiakYyZwTVGVhKDVTlny8VgNe"
