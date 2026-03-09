@@ -1,58 +1,46 @@
-import re
 import requests
-import json
+import xml.etree.ElementTree as ET
 
-LINKEDIN_PAGE = "https://www.linkedin.com/company/tspborgtr/posts/"
+FEED_URL = "https://www.linkedin.com/company/tspborgtr/posts-atom/"
 WEBHOOK = "https://metx-digital.sg.larksuite.com/base/automation/webhook/event/WTqiakYyZwTVGVhKDVTlny8VgNe"
 
 
-def fetch_html(url):
+def fetch_feed():
+
     headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept-Language": "en-US,en;q=0.9"
+        "User-Agent": "Mozilla/5.0"
     }
 
-    resp = requests.get(url, headers=headers, timeout=30)
+    resp = requests.get(FEED_URL, headers=headers, timeout=30)
     resp.raise_for_status()
+
     return resp.text
 
 
-def extract_post(html):
+def parse_latest_post(xml_data):
 
-    # 找 JSON 数据块
-    match = re.search(r'<code id="bpr-guid-[^"]+">(.*?)</code>', html)
+    root = ET.fromstring(xml_data)
 
-    if not match:
-        print("No JSON block found")
+    ns = {
+        "atom": "http://www.w3.org/2005/Atom"
+    }
+
+    entry = root.find("atom:entry", ns)
+
+    if entry is None:
         return None
 
-    data = match.group(1)
-    data = data.replace("&quot;", '"')
+    title = entry.find("atom:title", ns).text
+    link = entry.find("atom:link", ns).attrib["href"]
 
-    try:
-        obj = json.loads(data)
-    except:
-        print("JSON parse error")
-        return None
-
-    text = json.dumps(obj)
-
-    match2 = re.search(r'"activityUrn":"urn:li:activity:(\d+)"', text)
-
-    if not match2:
-        print("No activity id found")
-        return None
-
-    return match2.group(1)
+    return title, link
 
 
-def push_to_lark(post_id):
-
-    post_url = f"https://www.linkedin.com/feed/update/urn:li:activity:{post_id}/"
+def push_to_lark(title, link):
 
     payload = {
-        "title": "Latest LinkedIn Post",
-        "url": post_url,
+        "title": title,
+        "url": link,
         "author": "TSPB"
     }
 
@@ -65,22 +53,24 @@ def push_to_lark(post_id):
 
     resp.raise_for_status()
 
-    print("Push success:", post_url)
+    print("Push success:", link)
 
 
 def main():
 
-    html = fetch_html(LINKEDIN_PAGE)
+    xml_data = fetch_feed()
 
-    post_id = extract_post(html)
+    result = parse_latest_post(xml_data)
 
-    if not post_id:
-        print("No post detected")
+    if not result:
+        print("No post found")
         return
 
-    print("Latest post id:", post_id)
+    title, link = result
 
-    push_to_lark(post_id)
+    print("Latest post:", title)
+
+    push_to_lark(title, link)
 
 
 if __name__ == "__main__":
