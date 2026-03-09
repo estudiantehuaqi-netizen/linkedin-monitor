@@ -1,64 +1,62 @@
-from playwright.sync_api import sync_playwright
 import requests
-import re
+import xml.etree.ElementTree as ET
 
-PAGE_URL = "https://www.linkedin.com/company/tspborgtr/posts/"
-WEBHOOK = "https://metx-digital.sg.larksuite.com/base/automation/webhook/event/WTqiakYyZwTVGVhKDVTlny8VgNe"
+FEED_URL = "https://www.linkedin.com/company/tspborgtr/posts-atom/"
+WEBHOOK = "你的飞书webhook"
 
 
 def get_latest_post():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
 
-        page.goto(PAGE_URL, wait_until="networkidle", timeout=60000)
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
 
-        html = page.content()
-        print("Page loaded, html length:", len(html))
+    r = requests.get(FEED_URL, headers=headers, timeout=30)
 
-        # 直接从渲染后的 HTML 里抓最新 activity id
-        matches = re.findall(r"urn:li:activity:(\d+)", html)
+    text = r.text
 
-        if not matches:
-            browser.close()
-            print("No activity id found")
-            return None
+    print("Feed preview:", text[:200])
 
-        post_id = matches[0]
-        browser.close()
+    if "<entry>" not in text:
+        print("No post detected")
+        return None
 
-        return post_id
+    root = ET.fromstring(text)
+
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+
+    entry = root.find("a:entry", ns)
+
+    title = entry.find("a:title", ns).text
+    link = entry.find("a:link", ns).attrib["href"]
+
+    return title, link
 
 
-def push_to_lark(post_id: str):
-    post_url = f"https://www.linkedin.com/feed/update/urn:li:activity:{post_id}/"
+def push_to_lark(title, link):
 
-    payload = {
-        "title": "Latest LinkedIn Post",
-        "url": post_url,
+    data = {
+        "title": title,
+        "url": link,
         "author": "TSPB"
     }
 
-    resp = requests.post(
-        WEBHOOK,
-        headers={"Content-Type": "application/json"},
-        json=payload,
-        timeout=20
-    )
-    resp.raise_for_status()
-
-    print("Push success:", post_url)
+    requests.post(WEBHOOK, json=data)
 
 
 def main():
-    post_id = get_latest_post()
 
-    if not post_id:
-        print("No post found")
+    result = get_latest_post()
+
+    if not result:
         return
 
-    print("Latest post id:", post_id)
-    push_to_lark(post_id)
+    title, link = result
+
+    print("Latest post:", title)
+    print(link)
+
+    push_to_lark(title, link)
 
 
 if __name__ == "__main__":
